@@ -1,0 +1,5 @@
+new_dataset_normal/poplar: 534 files
+new_dataset_normal/snag: 58 files
+new_dataset_normal/spruce: 531 files
+new_dataset_normal/pine: 892 files
+new_dataset_normal/larch: 135 files
