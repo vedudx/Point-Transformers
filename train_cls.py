@@ -77,19 +77,15 @@ def test(model, loader, num_class=5):
        
 
     class_acc[:,2] =  class_acc[:,0]/ class_acc[:,1]
- 
-    print("class 1 accuracy",class_acc[0, 2])
-    print("class 2 accuracy", class_acc[1, 2])
-    print("class 3 accuracy", class_acc[2, 2])
-    print("class 4 accuracy", class_acc[3, 2])
-    print("class 5 accuracy", class_acc[4, 2])
+    
 
-    if num_class == 5:
-        wandb.log({"class 1 accuracy": class_acc[0, 2]})
-        wandb.log({"class 2 accuracy": class_acc[1, 2]})
-        wandb.log({"class 3 accuracy": class_acc[2, 2]})
-        wandb.log({"class 4 accuracy": class_acc[3, 2]})
-        wandb.log({"class 5 accuracy": class_acc[4, 2]})
+    #logging the class-wise accuracy
+    for i in range(num_class):
+        print(f"class {i+1} accuracy: {class_acc[i, 2]}")
+        wandb.log({f"class {i+1} accuracy":class_acc[i, 2]})
+
+      
+
 
     class_acc = np.mean(class_acc[:,2])
     print("class accuracy", class_acc)
@@ -115,7 +111,7 @@ def main(args):
 
     '''DATA LOADING'''
     logger.info('Load dataset ...')
-    DATA_PATH = hydra.utils.to_absolute_path('new_dataset_normal/') #modelnet40_normal_resampled/
+    DATA_PATH = hydra.utils.to_absolute_path('giga_small_dataset_normal_augment_cleaned/') #modelnet40_normal_resampled/
 
     TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train', normal_channel=args.normal, num_class=args.num_class)
     TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test', normal_channel=args.normal, num_class=args.num_class)
@@ -136,30 +132,6 @@ def main(args):
     best_instance_acc = 0.0
     best_class_acc = 0.0
 
-    try:
-        checkpoint = torch.load('best_model.pth')
-        start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
-   
-        with torch.no_grad():
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader)
-
-            best_instance_acc, best_class_acc, best_cf_matrix = instance_acc, class_acc
-            true_pos = np.diag(best_cf_matrix) 
-            precision = np.sum(true_pos / np.sum(best_cf_matrix, axis=0))
-            recall = np.sum(true_pos / np.sum(best_cf_matrix, axis=1))
-            logger.info('Beginning Instance Accuracy: %f, Class Accuracy: %f, precision: %f, recall: %f'% (instance_acc, class_acc, precision, recall))
-      
-    except:
-        logger.info('No existing model, starting training from scratch...')
-        start_epoch = 0
-    finally:
-        logger.info('Use pretrain model')
-
-
-    #wandb
-    wandb.watch(classifier, log_freq=100)
-
     if args.optimizer == 'Adam':
         optimizer = torch.optim.Adam(
             classifier.parameters(),
@@ -171,9 +143,44 @@ def main(args):
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.3) #50
-    global_epoch = 0
+
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.3) #50
+
+    try:
+        checkpoint = torch.load('best_model.pth')
+        start_epoch = checkpoint['epoch']
+        classifier.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        # Load the scheduler's state
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+   
+        with torch.no_grad():
+            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class)
+
+            best_instance_acc = instance_acc
+            best_class_acc = class_acc
+
+            #best_instance_acc, best_class_acc, best_cf_matrix = instance_acc, class_acc
+            true_pos = np.diag(cf_matrix) 
+            precision = 0 #np.sum(true_pos / np.sum(best_cf_matrix, axis=0))
+            recall = 0 #np.sum(true_pos / np.sum(best_cf_matrix, axis=1))
+            logger.info('Beginning Instance Accuracy: %f, Class Accuracy: %f, precision: %f, recall: %f'% (instance_acc, class_acc, precision, recall))
+            logger.info('Use pretrain model')
+    except Exception as e:
+        print(e)
+        logger.info('No existing model, starting training from scratch...')
+        start_epoch = 0
+
+        
+
+
+    #wandb
+    wandb.watch(classifier, log="all")
+
+
+
     global_step = 0
+    global_epoch = 0
 
     best_epoch = 0
     mean_correct = []
@@ -214,9 +221,9 @@ def main(args):
 
 
         with torch.no_grad():
-            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader)
+            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class)
 
-            print_confusion_matrix(cf_matrix, class_dictionary, num_class=5, save_path='last_confusion_matrix.png')
+            print_confusion_matrix(cf_matrix, class_dictionary, num_class=args.num_class, save_path='last_confusion_matrix.png')
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc
@@ -231,7 +238,7 @@ def main(args):
 
 
             if (instance_acc >= best_instance_acc):
-                print_confusion_matrix(cf_matrix, class_dictionary)
+                print_confusion_matrix(cf_matrix, class_dictionary, num_class=args.num_class)
 
                 true_pos = np.diag(cf_matrix) 
                 precision = np.sum(true_pos / np.sum(cf_matrix, axis=0))
@@ -246,6 +253,7 @@ def main(args):
                     'class_acc': class_acc,
                     'model_state_dict': classifier.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
                 }
                 torch.save(state, savepath)
             global_epoch += 1

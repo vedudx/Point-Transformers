@@ -1,5 +1,6 @@
-new_dataset_normal/poplar: 534 files
-new_dataset_normal/snag: 58 files
-new_dataset_normal/spruce: 531 files
-new_dataset_normal/pine: 892 files
-new_dataset_normal/larch: 135 files
+giga_dataset_normal_augment_cleaned/poplar: 6362 files
+giga_dataset_normal_augment_cleaned/snag: 371 files
+giga_dataset_normal_augment_cleaned/spruce: 3775 files
+giga_dataset_normal_augment_cleaned/pine: 4421 files
+giga_dataset_normal_augment_cleaned/larch: 932 files
+giga_dataset_normal_augment_cleaned: 15861 files
