@@ -14,7 +14,7 @@ def main(parent, o):
     
     # Specify the output file
     output_file = o
-    
+    total_count = 0
     # Open the output file in write mode
     with open(output_file, 'w') as f:
         # Go through each folder inside the parent directory
@@ -25,11 +25,15 @@ def main(parent, o):
             
             # Count the number of files in the folder
             num_files = count_files_in_directory(foldername)
+
+            total_count += num_files
             
             # Write the folder name and the number of files to the output file
             f.write(f'{foldername}: {num_files} files\n')
             print(f'{foldername}: {num_files} files')
-
+        # Write the folder name and the number of files to the output file
+        f.write(f'{parent_directory}: {total_count} files\n')
+        print(f'{parent_directory}: {total_count} files\n')
 if __name__ == "__main__":
       # Add arguments
     parser = argparse.ArgumentParser(description='Count the number of files in each folder inside a parent directory.')
