@@ -3,8 +3,8 @@ import numpy as np
 import open3d as o3d
 import laspy as lp
 # Read the point cloud
-folderName = "dataset"
-newFolderName = "giga_dataset/"
+folderName = "giga_dataset_normal/"
+newFolderName = "giga_dataset_normal_augment/"
 folderPath = Path(folderName)
 folderPath.mkdir(parents=True, exist_ok=True)
 # Get all the folders in the folder
