@@ -2,16 +2,27 @@ import numpy as np
 import os
 from torch.utils.data import Dataset
 import torch
-from pointnet_util import farthest_point_sample, pc_normalize
+from pointnet_util import farthest_point_sample, pc_normalize, farthest_point_sample_n
 import json
+import logging
+
+
+from multiprocessing import Manager
+manager=Manager()
+shared_cache=manager.dict()
+
+
+logger = logging.getLogger(__name__)
 
 
 class ModelNetDataLoader(Dataset):
-    def __init__(self, root, npoint=1024, split='train', uniform=False, normal_channel=True, cache_size=15000, num_class=5):
+    def __init__(self, root, npoint=1024, split='train', uniform=False, normal_channel=True, cache_size=3000000, num_class=5):
         self.root = root
         self.npoints = npoint
         self.uniform = uniform
         self.catfile = os.path.join(self.root, 'modelnet40_shape_names.txt')
+
+        self.limit=8000
 
         self.cat = [line.rstrip() for line in open(self.catfile)]
         self.classes = dict(zip(self.cat, range(len(self.cat))))
@@ -20,6 +31,8 @@ class ModelNetDataLoader(Dataset):
         shape_ids = {}
         shape_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'modelnet'+str(num_class)+'_train.txt'))]
         shape_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'modelnet'+str(num_class)+'_test.txt'))]
+      
+
 
         assert (split == 'train' or split == 'test')
         shape_names = ['_'.join(x.split('_')[0:-1]) for x in shape_ids[split]]
@@ -29,24 +42,30 @@ class ModelNetDataLoader(Dataset):
         print('The size of %s data is %d'%(split,len(self.datapath)))
 
         self.cache_size = cache_size  # how many data points to cache in memory
-        self.cache = {}  # from index to (point_set, cls) tuple
+        print(f'size of cache is {self.cache_size}')
+        self.cache = manager.dict()  # from index to (point_set, cls) tuple
 
     def __len__(self):
         return len(self.datapath)
 
     def _get_item(self, index):
+
         if index in self.cache:
             point_set, cls = self.cache[index]
+            #logger.info("Cache Hit")
         else:
+            # logger.info(f'{len(self.cache)} {index}')
             fn = self.datapath[index]
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+        # print(point_set.shape)
             if self.uniform:
-                point_set = farthest_point_sample(point_set, self.npoints)
+                point_set = farthest_point_sample_n(point_set[0: self.limit,  :], self.npoints)  #torch.from_numpy(point_set).unsqueeze(0)
+                #point_set = point_set.numpy()
             else:
-                point_set = point_set[0:self.npoints,:]
-
+                point_set = point_set[0:self.npoints*2:2, :]
+            
             point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
 
             if not self.normal_channel:
@@ -54,6 +73,8 @@ class ModelNetDataLoader(Dataset):
 
             if len(self.cache) < self.cache_size:
                 self.cache[index] = (point_set, cls)
+            else:
+                logger.info("Cache Full", len(self.cache))
 
         return point_set, cls
 
