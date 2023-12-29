@@ -23,9 +23,12 @@ import seaborn as sn
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import debugpy
+import multiprocessing
+
 from sklearn.metrics import confusion_matrix
 
-wandb.init()
+
 
 '''
 function to print confusion matrix
@@ -43,13 +46,14 @@ def print_confusion_matrix(cf_matrix, class_dictionary, num_class=5, save_path='
 
 
 
-def test(model, loader, num_class=5):
+def test(model, loader, num_class=5, epoch=0):
     mean_correct = []
 
 
     true_labels = []  # List to store true labels
     pred_labels = []  # List to store predicted labels
     class_acc = np.zeros((num_class,3))
+    test_loss = 0.0
     for j, data in tqdm(enumerate(loader), total=len(loader)):
         points, target = data
         target = target[:, 0]
@@ -57,6 +61,10 @@ def test(model, loader, num_class=5):
         classifier = model.eval()
         pred = classifier(points)
         pred_choice = pred.data.max(1)[1]
+
+        # Calculate test loss
+        loss = torch.nn.CrossEntropyLoss()(pred, target.long())
+        test_loss += loss.item()
         for cat in np.unique(target.cpu()):
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
             # print(target[target==cat])
@@ -73,8 +81,10 @@ def test(model, loader, num_class=5):
 
         # Calculate the confusion matrix
         cf_matrix = confusion_matrix(true_labels, pred_labels)
-
-       
+ 
+    test_loss /= len(loader)  # Calculate average test loss
+    print("Test Loss: {:.4f}".format(test_loss))
+    wandb.log({"Test Loss": test_loss, "epoch": epoch})
 
     class_acc[:,2] =  class_acc[:,0]/ class_acc[:,1]
     
@@ -85,14 +95,10 @@ def test(model, loader, num_class=5):
         wandb.log({f"class {i+1} accuracy":class_acc[i, 2]})
 
       
-
-
     class_acc = np.mean(class_acc[:,2])
     print("class accuracy", class_acc)
     #can log class accuracy in case of our code
   
-
-
     instance_acc = np.mean(mean_correct)
     return instance_acc, class_acc, cf_matrix
 
@@ -108,17 +114,25 @@ def main(args):
     logger = logging.getLogger(__name__)
 
     #print(args.pretty())
+    wandb.init(resume=args.contin)
+
 
     '''DATA LOADING'''
     logger.info('Load dataset ...')
     DATA_PATH = hydra.utils.to_absolute_path('giga_small_dataset_normal_augment_cleaned/') #modelnet40_normal_resampled/
 
-    TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train', normal_channel=args.normal, num_class=args.num_class)
-    TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test', normal_channel=args.normal, num_class=args.num_class)
+    TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',uniform = args.uniform, normal_channel=args.normal, num_class=args.num_class)
+    TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',uniform = args.uniform, normal_channel=args.normal, num_class=args.num_class)
     class_dictionary = TEST_DATASET.cat
     print(class_dictionary, type(class_dictionary))
-    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    # multiprocessing.set_start_method('spawn')
+    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=6)
+    testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size,shuffle=False, num_workers=6)
+
+    ''' DEBUGGING INFO'''
+    if args.debug:
+        debugpy.listen(5678)
+        debugpy.wait_for_client()
 
     '''MODEL LOADING'''
     # args.num_class = 40
@@ -147,6 +161,9 @@ def main(args):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.3) #50
 
     try:
+        if not args.contin:
+            raise Exception('Skip using pre-trained model')
+        
         checkpoint = torch.load('best_model.pth')
         start_epoch = checkpoint['epoch']
         classifier.load_state_dict(checkpoint['model_state_dict'])
@@ -155,7 +172,7 @@ def main(args):
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
    
         with torch.no_grad():
-            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class)
+            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class, 0)
 
             best_instance_acc = instance_acc
             best_class_acc = class_acc
@@ -168,11 +185,24 @@ def main(args):
             logger.info('Use pretrain model')
     except Exception as e:
         print(e)
-        logger.info('No existing model, starting training from scratch...')
+        logger.info('No existing model, starting training from scratch... Testing first')
         start_epoch = 0
+        with torch.no_grad():
+            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class, 0)
+
+            best_instance_acc = instance_acc
+            best_class_acc = class_acc
+
+            #best_instance_acc, best_class_acc, best_cf_matrix = instance_acc, class_acc
+            true_pos = np.diag(cf_matrix) 
+            precision = 0 #np.sum(true_pos / np.sum(best_cf_matrix, axis=0))
+            recall = 0 #np.sum(true_pos / np.sum(best_cf_matrix, axis=1))
+            logger.info('Beginning Instance Accuracy: %f, Class Accuracy: %f, precision: %f, recall: %f'% (instance_acc, class_acc, precision, recall))
+            logger.info('New Model')
 
         
-
+    if args.eval_only:
+        exit(0)
 
     #wandb
     wandb.watch(classifier, log="all")
@@ -189,7 +219,7 @@ def main(args):
     logger.info('Start training...')
     for epoch in range(start_epoch,args.epoch):
         logger.info('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
-        
+        train_loss = 0.0
         classifier.train()
         for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             points, target = data
@@ -209,7 +239,9 @@ def main(args):
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
             if batch_id % args.log_interval == 0:
-                wandb.log({"loss": loss})
+                wandb.log({"Batch loss": loss})
+
+            train_loss += loss
             loss.backward()
             optimizer.step()
             global_step += 1
@@ -218,10 +250,16 @@ def main(args):
 
         train_instance_acc = np.mean(mean_correct)
         logger.info('Train Instance Accuracy: %f' % train_instance_acc)
+        wandb.log({"Train Instance Accuracy": train_instance_acc})
+        epoch_loss = train_loss / len(trainDataLoader)
+
+        print("Epoch {} : Train Loss: {:.4f}".format(epoch + 1, epoch_loss))
+        wandb.log({"Train Loss": epoch_loss, "epoch": epoch+1})
+
 
 
         with torch.no_grad():
-            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class)
+            instance_acc, class_acc, cf_matrix = test(classifier.eval(), testDataLoader, args.num_class, epoch+1)
 
             print_confusion_matrix(cf_matrix, class_dictionary, num_class=args.num_class, save_path='last_confusion_matrix.png')
 
@@ -257,6 +295,8 @@ def main(args):
                 }
                 torch.save(state, savepath)
             global_epoch += 1
+        
+      
 
     logger.info('End of training...')
 
