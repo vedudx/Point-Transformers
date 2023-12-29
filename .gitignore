@@ -17,3 +17,9 @@ wandb/
 log/
 .cph/
 giga_ultra_dataset.zip
+treenet5_test.txt 
+treenet5_train.txt 
+treenet5_val.txt 
+treenet10_test.txt 
+treenet10_train.txt 
+treenet10_val.txt
