@@ -13,9 +13,13 @@ def timeit(tag, t):
     return time()
 
 def pc_normalize(pc):
+    #print(pc.shape)
     centroid = np.mean(pc, axis=0)
+   # print(centroid)
     pc = pc - centroid
+    #print(pc)
     m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+    #print(m)
     pc = pc / m
     return pc
 
@@ -72,6 +76,47 @@ def farthest_point_sample(xyz, npoint):
         farthest = torch.max(distance, -1)[1]
     return centroids
 
+def farthest_point_sample_n(point, npoint):
+    """
+    Input:
+        xyz: pointcloud data, [N, D]
+        npoint: number of samples
+    Return:
+        centroids: sampled pointcloud index, [npoint, D]
+    """
+    N, D = point.shape
+    xyz = point[:,:3]
+    centroids = np.zeros((npoint,))
+    distance = np.ones((N,)) * 1e10
+    farthest = np.random.randint(0, N)
+    for i in range(npoint):
+        centroids[i] = farthest
+        centroid = xyz[farthest, :]
+        dist = np.sum((xyz - centroid) ** 2, -1)
+        mask = dist < distance
+        distance[mask] = dist[mask]
+        farthest = np.argmax(distance, -1)
+    point = point[centroids.astype(np.int32)]
+    return point
+
+    # N, D = point.shape
+    # xyz = torch.tensor(point[:, :3], dtype=torch.float32).cuda()  # Move data to GPU
+
+    # centroids = torch.zeros((npoint,), dtype=torch.long).cuda()
+    # distance = torch.ones((N,), dtype=torch.float32).cuda() * 1e10
+    # farthest = torch.randint(0, N, (1,), dtype=torch.long).cuda()
+
+    # for i in range(npoint):
+    #     centroids[i] = farthest
+    #     centroid = xyz[farthest, :]
+    #     dist = torch.sum((xyz - centroid) ** 2, dim=-1)
+    #     mask = dist < distance
+    #     distance[mask] = dist[mask]
+    #     farthest = torch.argmax(distance, dim=-1)
+
+    # point = point[centroids.cpu().numpy().astype(np.int32)]  # Move data back to CPU
+    # del xyz, centroids, distance, farthest
+    # return point
 
 def query_ball_point(radius, nsample, xyz, new_xyz):
     """
