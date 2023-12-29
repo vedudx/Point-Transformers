@@ -23,11 +23,13 @@ class TransformerBlock(nn.Module):
         self.w_ks = nn.Linear(d_model, d_model, bias=False)
         self.w_vs = nn.Linear(d_model, d_model, bias=False)
         self.k = k
+        self.skip = 1
         
     # xyz: b x n x 3, features: b x n x f
+    # Need to make it better
     def forward(self, xyz, features):
         dists = square_distance(xyz, xyz)
-        knn_idx = dists.argsort()[:, :, :self.k]  # b x n x k
+        knn_idx = dists.argsort()[:, :, :self.k*self.skip:self.skip]  # b x n x k
         knn_xyz = index_points(xyz, knn_idx)
         
         pre = features
