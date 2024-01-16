@@ -5,35 +5,31 @@ Recently, various methods applied transformers to point clouds: [PCT: Point Clou
 
 ## Classification
 ### Data Preparation
-Download alignment **ModelNet** [here](https://shapenet.cs.stanford.edu/media/modelnet40_normal_resampled.zip) and save in `modelnet40_normal_resampled`.
+Prepare data in the same format as ['model net 40'](https://shapenet.cs.stanford.edu/media/modelnet40_normal_resampled.zip).
 
+### Requirement
+install CUDA supported pytorch, and then 
+```
+pip install -r requirements.txt
+```
+### Help
+Most of the scripts have instructions on usage, so please refer to those when facing any issues.
+
+### Data Preparation
+```
+# Have a data directory
+- bash scripts/augment.sh "original_folder" "new_folder"
+- original_folder is the directory of your data folder, and new folder is what you want your new directory prefix to be
+```
 ### Run
 Change which method to use in `config/cls.yaml` and run
 ```
 python train_cls.py
 ```
-### Results
-Using Adam with learning rate decay 0.3 for every 50 epochs, train for 200 epochs; data augmentation follows [this repo](https://github.com/yanx27/Pointnet_Pointnet2_pytorch). For Hengshuang and Nico, initial LR is 1e-3 (I would appreciate if someone could fine-tune these hyper-paramters); for Menghao, initial LR is 1e-4, as suggested by the [author](https://github.com/MenghaoGuo). ModelNet40 classification results (instance average) are listed below:
-| Model | Accuracy |
-|--|--|
-| Hengshuang | 91.7 |
-| Menghao | 92.6 |
-| Nico |  85.5 |
-
-
-## Part Segmentation
-### Data Preparation
-Download alignment **ShapeNet** [here](https://shapenet.cs.stanford.edu/media/shapenetcore_partanno_segmentation_benchmark_v0_normal.zip) and save in `data/shapenetcore_partanno_segmentation_benchmark_v0_normal`.
-
-### Run
-Change which method to use in `config/partseg.yaml` and run
-```
-python train_partseg.py
-```
-### Results
-Currently only Hengshuang's method is implemented.
 
 ### Miscellaneous
+
+Forked and Modified from [point transformer] (https://github.com/qq456cvb/Point-Transformers).
 Some code and training settings are borrowed from https://github.com/yanx27/Pointnet_Pointnet2_pytorch.
 Code for [PCT: Point Cloud Transformer (Meng-Hao Guo et al.)](https://arxiv.org/abs/2012.09688) is adapted from the author's Jittor implementation https://github.com/MenghaoGuo/PCT.
 

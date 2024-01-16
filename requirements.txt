@@ -2,3 +2,4 @@ numpy
 tqdm
 hydra-core==1.2
 omegaconf
+wandb
